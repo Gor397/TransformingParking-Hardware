@@ -4,37 +4,46 @@
 #include <ESP8266HTTPClient.h>
 #include <WiFiClientSecureBearSSL.h>
 
-// const char *ssid = "ART-NET_001048 5G";
-// const char *password = "gorsimonyan";
+const int height = 70;
+const int DOWN = 180;
+const int UP = 0;
+
+const char *OPEN_COMMAND = "1";
+const char *PAID = "5";
+
+const char *ssid = "ART-NET_001048 5G";
+const char *password = "gorsimonyan";
 
 // const char *ssid = "ALBATROS";
 // const char *password = "12345679";
 
-const char *ssid = "Gor's Galaxy A32";
-const char *password = "chem asi";
+// const char *ssid = "Gor's Galaxy A32";
+// const char *password = "chem asi";
+
+// const char *ssid = "Samsung";
+// const char *password = "Samsung2023$";
 
 const int servoPin = D1;
 
 const int echoPin = D4;
 const int trigPin = D3;
 
-const char *check_url = "https://parking-server.simonyan-gor-397.workers.dev/?parking_id=q7uZRbKE5BMEBpEsbaOK&status=0&secret=920ef64e081d6c8d5861db5a34919506";
-const char *set_status_busy_url = "https://parking-server.simonyan-gor-397.workers.dev/?parking_id=q7uZRbKE5BMEBpEsbaOK&status=2&secret=920ef64e081d6c8d5861db5a34919506";
-const char *set_status_free_url = "https://parking-server.simonyan-gor-397.workers.dev/?parking_id=q7uZRbKE5BMEBpEsbaOK&status=3&secret=920ef64e081d6c8d5861db5a34919506";
+const char *check_url = "https://parking-server.simonyan-gor-397.workers.dev/?parking_id=X0qUIoVpRZoc1NsoAr7J&status=0&secret=920ef64e081d6c8d5861db5a34919506";
+const char *set_status_busy_url = "https://parking-server.simonyan-gor-397.workers.dev/?parking_id=X0qUIoVpRZoc1NsoAr7J&status=2&secret=920ef64e081d6c8d5861db5a34919506";
+const char *set_status_free_url = "https://parking-server.simonyan-gor-397.workers.dev/?parking_id=X0qUIoVpRZoc1NsoAr7J&status=3&secret=920ef64e081d6c8d5861db5a34919506";
+const char *update_url = "https://parking-server.simonyan-gor-397.workers.dev/?parking_id=X0qUIoVpRZoc1NsoAr7J&status=6&secret=920ef64e081d6c8d5861db5a34919506";
 
 Servo servo;
 
 void servoDown() {
-  servo.write(180);
+  servo.write(DOWN);
 }
 
 void servoUp(int delay_sec) {
-  delay(delay_sec * 1000);
-  if (!checkDistance()) {
-    servo.write(0);
-  } else {
-    servoUp(delay_sec);
+  while (checkDistance()) {
+    delay(delay_sec * 1000);
   }
+  servo.write(UP);
 }
 
 bool checkDistance() {
@@ -52,7 +61,7 @@ bool checkDistance() {
   Serial.print(distance_cm);
   Serial.println(" cm");
 
-  return (distance_cm < 70);
+  return (distance_cm < height);
 }
 
 void setup() {
@@ -66,7 +75,7 @@ void setup() {
   // pinMode(LED_BUILTIN, OUTPUT);
   servo.attach(servoPin);
   Serial.println("servoUp");
-  servoUp(1);
+  servoUp(2);
 
   // Connect to WiFi
   WiFi.mode(WIFI_STA);
@@ -98,7 +107,7 @@ void loop() {
 
     //Initializing an HTTPS communication using the secure client
     Serial.print("[HTTPS] begin...\n");
-    if (https.begin(*client, check_url)) {  // HTTPS
+    if (https.begin(*client, check_url)) {
 
       Serial.print("[HTTPS] GET... ");
       Serial.print(check_url);
@@ -110,7 +119,7 @@ void loop() {
         Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
         String payload = https.getString();
         Serial.println(payload);
-        if (httpCode == HTTP_CODE_OK && payload == "1") {
+        if (httpCode == HTTP_CODE_OK && payload == OPEN_COMMAND) {
           servoDown();
           for (int i = 0; i <= 120; i++) {
             if (checkDistance()) {
@@ -136,6 +145,39 @@ void loop() {
             }
             delay(500);
           }
+        } else if (httpCode == HTTP_CODE_OK && payload == PAID) {
+          servoDown();
+          for (int i = 0; i <= 120; i++) {
+            if (checkDistance()) {
+              delay(300);
+              if (!checkDistance()) {
+                delay(200);
+                if (!checkDistance()) {
+                  continue;
+                };
+              }
+              servoUp(3.5);
+
+              HTTPClient set_free_https;
+              set_free_https.begin(*client, set_status_free_url);
+
+              if (set_free_https.GET() == 200) {
+                Serial.println("Status is set to 'free' (3) ");
+              }
+              set_free_https.end();
+              break;
+            } else if (i == 120) {
+              HTTPClient update_https;
+              update_https.begin(*client, update_url);
+
+              if (update_https.GET() == 200) {
+                Serial.println("Status is set to 'free' (3) ");
+              }
+              update_https.end();
+              servoUp(1);
+            }
+            delay(500);
+          }
         } else if (httpCode == HTTP_CODE_OK && payload == "-1") {
           HTTPClient set_status_free_https;
           set_status_free_https.begin(*client, set_status_free_url);
@@ -144,22 +186,20 @@ void loop() {
             Serial.print(set_status_free_https.getString());
           }
         }
+
+        https.end();
       } else {
-        Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
+        Serial.printf("[HTTPS] Unable to connect\n");
       }
-
-      https.end();
     } else {
-      Serial.printf("[HTTPS] Unable to connect\n");
+      Serial.println("No Wifi connection !");
     }
-  } else {
-    Serial.println("No Wifi connection !");
-  }
 
-  Serial.println();
-  int delay_time = 5;
-  Serial.print("Waiting ");
-  Serial.print(delay_time);
-  Serial.print(" seconds before the next round...");
-  delay(delay_time * 1000);
+    Serial.println();
+    int delay_time = 5;
+    Serial.print("Waiting ");
+    Serial.print(delay_time);
+    Serial.print(" seconds before the next round...");
+    delay(delay_time * 1000);
+  }
 }
