@@ -5,11 +5,16 @@
 #include <WiFiClientSecureBearSSL.h>
 
 const int height = 70;
+
+const int pass_seconds = 60;
+
 const int DOWN = 180;
 const int UP = 0;
 
 const char *OPEN_COMMAND = "1";
 const char *PAID = "5";
+const char *OPEN_COMMAND_OWNER = "7";
+const char *CLOSE_COMMAND_OWNER = "8";
 
 const char *ssid = "ART-NET_001048 5G";
 const char *password = "gorsimonyan";
@@ -121,9 +126,9 @@ void loop() {
         Serial.println(payload);
         if (httpCode == HTTP_CODE_OK && payload == OPEN_COMMAND) {
           servoDown();
-          for (int i = 0; i <= 120; i++) {
+          for (int i = 0; i <= pass_seconds; i++) {
             if (checkDistance()) {
-              delay(300);
+              delay(1400);
               if (!checkDistance()) {
                 delay(200);
                 if (!checkDistance()) {
@@ -140,16 +145,24 @@ void loop() {
               }
               set_busy_https.end();
               break;
-            } else if (i == 120) {
+            } else if (i == pass_seconds) {
               servoUp(1);
+              HTTPClient set_free_https;
+              set_free_https.begin(*client, set_status_free_url);
+
+              if (set_free_https.GET() == 200) {
+                Serial.println("Status is set to 'free' (3) ");
+              }
+              set_free_https.end();
+              break;
             }
-            delay(500);
+            delay(1000);
           }
         } else if (httpCode == HTTP_CODE_OK && payload == PAID) {
           servoDown();
-          for (int i = 0; i <= 120; i++) {
+          for (int i = 0; i <= pass_seconds; i++) {
             if (checkDistance()) {
-              delay(300);
+              delay(1400);
               if (!checkDistance()) {
                 delay(200);
                 if (!checkDistance()) {
@@ -166,7 +179,8 @@ void loop() {
               }
               set_free_https.end();
               break;
-            } else if (i == 120) {
+            } else if (i == pass_seconds) {
+              servoUp(1);
               HTTPClient update_https;
               update_https.begin(*client, update_url);
 
@@ -174,10 +188,14 @@ void loop() {
                 Serial.println("Status is set to 'free' (3) ");
               }
               update_https.end();
-              servoUp(1);
+              break;
             }
-            delay(500);
+            delay(1000);
           }
+        } else if (httpCode == HTTP_CODE_OK && payload == OPEN_COMMAND_OWNER) {
+          servoDown();
+        } else if (httpCode == HTTP_CODE_OK && payload == CLOSE_COMMAND_OWNER) {
+          servoUp(1);
         } else if (httpCode == HTTP_CODE_OK && payload == "-1") {
           HTTPClient set_status_free_https;
           set_status_free_https.begin(*client, set_status_free_url);
